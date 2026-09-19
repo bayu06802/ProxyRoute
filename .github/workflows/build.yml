@@ -1,0 +1,63 @@
+name: Extract and Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP
+        run: |
+          if [ -f proxyroute.zip ]; then
+            unzip -o proxyroute.zip -d project
+          elif [ -f project.zip ]; then
+            unzip -o project.zip -d project
+          else
+            echo "ZIP tidak ditemukan, cari di folder lain..."
+            find . -name "*.zip" -not -path "./.git/*" -exec unzip -o {} -d project \;
+          fi
+          ls -la project
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Detect project root
+        id: detect
+        run: |
+          if [ -f project/settings.gradle ]; then
+            echo "root=project" >> $GITHUB_OUTPUT
+          elif [ -f project/ProxyRoute/settings.gradle ]; then
+            echo "root=project/ProxyRoute" >> $GITHUB_OUTPUT
+          else
+            DIR=$(find project -name "settings.gradle" -o -name "settings.gradle.kts" | head -1 | xargs dirname)
+            echo "root=$DIR" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build APK
+        working-directory: ${{ steps.detect.outputs.root }}
+        run: |
+          chmod +x gradlew || true
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --no-daemon
+          else
+            gradle assembleDebug --no-daemon
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProxyRoute-APK
+          path: ${{ steps.detect.outputs.root }}/app/build/outputs/apk/debug/*.apk
